@@ -1,13 +1,13 @@
-using System.Net;
-using System.Threading.Tasks.Dataflow;
-using System.Diagnostics;
-using System.Numerics;
+//using System.Diagnostics;
+//using System.Numerics;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
  
 public class BaseEnemyController : MonoBehaviour 
 {
+    // -----Status-----
+    public int damage;  // 敌人造成的伤害
     /// <summary>
     /// 移动速度，以帧计算
     /// </summary>
@@ -34,22 +34,39 @@ public class BaseEnemyController : MonoBehaviour
     public Transform enemyCenter;
 
     private bool _collided; // 敌人碰撞状态
+    private Color red = Color.red, green = Color.green;
 
     private Rigidbody2D _rigidbody2D; // 敌人刚体
     private CapsuleCollider2D _capsuleCollider2D; // 胶囊检测器
-    private Animater _animater; // 动画状态机
+    private Animator _Animator; // 动画状态机
+    private SpriteRenderer _spriteRender;   // 渲染
 
     void Start()
     {
         _rigidbody2D = GetComponent<Rigidbody2D>();
         _capsuleCollider2D = GetComponent<CapsuleCollider2D>();
-        _animater = GetComponent<Animater>();
+        _Animator = GetComponent<Animator>();
+        _spriteRender = GetComponentInChildren<SpriteRenderer>();
     }
  
     private void FixedUpdate() // 移动状态
     {
         // 移动方向
         Vector3 movement = new Vector3(enemySpeed, _rigidbody2D.velocity.y, 0);
+        // 左右翻转
+        {
+            if(movement.x > 0)
+            {
+                _spriteRender.flipX = false;
+                enemyForwardUp.localPosition = new Vector3(-enemyForwardUp.localPosition.x, enemyForwardUp.localPosition.y, enemyForwardUp.localPosition.z);
+                enemyForwardDown.localPosition = new Vector3(-enemyForwardUp.localPosition.x, enemyForwardUp.localPosition.y, enemyForwardUp.localPosition.z);
+            }else if(movement.x < 0)
+            {
+                _spriteRender.flipX = true;
+                enemyForwardUp.localPosition = new Vector3(-enemyForwardUp.localPosition.x, enemyForwardUp.localPosition.y, enemyForwardUp.localPosition.z);
+                enemyForwardDown.localPosition = new Vector3(-enemyForwardUp.localPosition.x, enemyForwardUp.localPosition.y, enemyForwardUp.localPosition.z);
+            }
+        }
         // 平面移动
         transform.position += movement * Time.deltaTime;
 
@@ -73,7 +90,6 @@ public class BaseEnemyController : MonoBehaviour
 
     private void OnCollisionEnter2D(Collision2D other) // 被玩家攻击碰撞
     {
-        玩家攻击待写
         if (other.gameObject.tag == "PlayerAttack") // 遇到攻击
         {
             // 攻击与敌人的距离
@@ -81,18 +97,29 @@ public class BaseEnemyController : MonoBehaviour
 
             if (length <= 1.0f) // 有效攻击距离
             {
-                击杀敌人效果待写
+                // 击杀敌人效果待写
                 // 敌人死亡，停止移动
                 enemySpeed = 0f;
                 // 死亡动画
-                _animater.SetTrigger("die");
+                _Animator.SetTrigger("die");
                 // 取消碰撞
-                _capsuleCollider2D.enable = false;
-                _rigidbody2D.bodyType = Rigidbody2D.Kinematic;
+                _capsuleCollider2D.enabled = false;
+                _rigidbody2D.bodyType = RigidbodyType2D.Kinematic;
+
                 // 1s消失动画
                 Destroy(gameObject, 1f);
             }
 
+        }
+        if(other.gameObject.tag == "Player")    // 触碰事件
+        {
+            if(other.transform.position.x > transform.position.x)
+            {
+                BasePlayerController.Hurt(1f, damage);
+            }else if(other.transform.position.x < transform.position.x)
+            {
+                BasePlayerController.Hurt(-1f, damage);
+            }
         }
     }
 }

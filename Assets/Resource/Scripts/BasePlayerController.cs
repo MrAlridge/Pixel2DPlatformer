@@ -33,11 +33,13 @@ public class BasePlayerController : MonoBehaviour
     public float footOffset = 0.375f;
     public float groundDistance = 0.2f;
     public LayerMask groundLayer;
+
     /// </summary> 
     // -----Status-----
-    public Animator playerAnimator;                                 // 动画状态机
-    private CharacterController m_playerController;                 // 角色控制器
+    private static Animator m_playerAnimator;                                 // 动画状态机
+    private static CharacterController m_playerController;                 // 角色控制器
     private SpriteRenderer m_playerRender;                          // 精灵渲染器
+    private static PlayerStatus m_playerStatus;
     private bool isGround;                                          // 是否在地上
     private bool isMoveableLeft;                                    // 是否可以左移动
     private bool isMoveableRight;                                   // 是否可以右移动
@@ -52,8 +54,9 @@ public class BasePlayerController : MonoBehaviour
     void Start()
     {
         m_playerController = GetComponent<CharacterController>();
-        playerAnimator = GetComponentInChildren<Animator>();
+        m_playerAnimator = GetComponentInChildren<Animator>();
         m_playerRender = GetComponentInChildren<SpriteRenderer>();
+        m_playerStatus = GetComponent<PlayerStatus>();
     }
 
     void Update()
@@ -66,11 +69,14 @@ public class BasePlayerController : MonoBehaviour
         GetInput();
         Jump();
         ScanDashDir();
-        if(!PlayerStatus.isOnLadder)
+        if(!PlayerStatus.isHurt)
         {
-            Move(m_horizontalInput);
-        }else{
-            Climb();
+            if(!PlayerStatus.isOnLadder)
+            {
+                Move(m_horizontalInput);
+            }else{
+                Climb();
+            }
         }
     }
 
@@ -125,9 +131,9 @@ public class BasePlayerController : MonoBehaviour
         /// 设置移动时的动画
         if(Mathf.Abs(m_playerController.velocity.x) >= 0.05f)
         {
-            playerAnimator.SetBool("isMove", true);
+            m_playerAnimator.SetBool("isMove", true);
         }else{
-            playerAnimator.SetBool("isMove", false);
+            m_playerAnimator.SetBool("isMove", false);
         }
         /// </summary>
         /// <summary>
@@ -148,24 +154,13 @@ public class BasePlayerController : MonoBehaviour
     {
         m_horizontalInput = Input.GetAxis("Horizontal");
         m_verticalInput = Input.GetAxis("Vertical");
-        /*
-        // -这一段暂时弃用，因为跟Move不在一个函数，导致限制水平输入的功能无法实现-
-        if(!isMoveableLeft && m_moveDirction.x < 0)
-        {
-            m_horizontalInput = 0;
-        }
-        if(!isMoveableRight && m_moveDirction.x > 0)
-        {
-            m_horizontalInput = 0;
-        }
-        */
         // 跳跃处理
         if(!isDashing)
         {
             if(Input.GetButtonDown("Dash"))
             {
                 isDashing = true;
-                playerAnimator.SetBool("isDashing", true);
+                m_playerAnimator.SetBool("isDashing", true);
                 currentDashTime = dashTime;
             }
         }
@@ -183,7 +178,7 @@ public class BasePlayerController : MonoBehaviour
             {
                 // 跳跃的公式
                 m_moveDirction.y = playerJumpSpeed;
-                playerAnimator.SetTrigger("jumpTrigger");
+                m_playerAnimator.SetTrigger("jumpTrigger");
                 jumpCount++;
             }
         }
@@ -197,7 +192,7 @@ public class BasePlayerController : MonoBehaviour
         {
             isDashing = false;
             currentDashTime = 0;
-            playerAnimator.SetBool("isDashing", false);
+            m_playerAnimator.SetBool("isDashing", false);
             return;
         }
         // 冲刺的移动速度逻辑
@@ -276,5 +271,20 @@ public class BasePlayerController : MonoBehaviour
         Debug.DrawRay(pos + offset, rayDiraction * length, color);
 
         return hit;
+    }
+
+    /// <summary>
+    /// 玩家死亡静态方法
+    /// </summary>
+    public static void Hurt(float hurtDir, int damage)      // hurtDir是玩家受伤飞出去的方向
+    {
+        if(PlayerStatus.healthValue > damage)
+        {
+            PlayerStatus.healthValue -= damage;
+            m_playerAnimator.SetTrigger("hurtTrigger");
+            PlayerStatus.isHurt = true;
+            m_playerController.Move(new Vector3(hurtDir * 1f, 0.5f, 0f));
+            m_playerStatus.HurtCooldown();
+        }
     }
 }
