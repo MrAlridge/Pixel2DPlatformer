@@ -113,13 +113,7 @@ public class BaseEnemyController : MonoBehaviour
         }
         if(other.gameObject.tag == "Player")    // 触碰事件
         {
-            if(other.transform.position.x > transform.position.x)
-            {
-                BasePlayerController.Hurt(1f, damage);
-            }else if(other.transform.position.x < transform.position.x)
-            {
-                BasePlayerController.Hurt(-1f, damage);
-            }
+            BasePlayerController.Hurt();
         }
     }
 }

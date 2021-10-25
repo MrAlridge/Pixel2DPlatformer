@@ -4,35 +4,61 @@ using UnityEngine;
 
 public class PlayerStatus : MonoBehaviour
 {
-    public int maxiumHealthValue;                   // 玩家最大血量
-    public static bool isOnLadder = false;          // 玩家是否在爬梯子
+    public static bool isOnClimb = false;          // 玩家是否在爬
+    public static bool isAbleClimb;                 // 是否具备爬的资格
     public static bool isHurt;                      // 玩家是否受伤
-    public static int healthValue;                  // 玩家血量
-    public int hurtCDTime;                          //
-    private int currentTime;                        // 受伤冷却倒计时
-
+    private static bool isGround;
+    private static Vector2 checkPointPos;                // 玩家上次落地的地方
+    public static Vector2 climbStartPos;                // 开始攀爬的地方
+    private Coroutine currentCoroutine;
+    public static int climbCountDown = 0;
+    public static bool corotineFlag = false;
     void Start()
     {
-        currentTime = hurtCDTime;
+        
     }
 
-    public void StartHurtCoolDown()
+    void Update()
     {
-        StartCoroutine("HurtCooldown");
-    }
-
-    public IEnumerator HurtCooldown()
-    {
-        while(currentTime > 0)
+        if(isOnClimb && corotineFlag == false)
         {
-            currentTime--;
+            climbCountDown = 8;
+            currentCoroutine = StartCoroutine(ClimbCountDown());
+        }
+        if((!isOnClimb && corotineFlag == true) || isGround)
+        {
+            StopCoroutine(currentCoroutine);
+        }
+        // Debug.Log(isOnClimb.ToString() + ',' + corotineFlag.ToString());
+    }
+
+    public static void SetCheckPoint(Vector2 newPos)
+    {
+        if(newPos != checkPointPos)
+        {
+            checkPointPos = newPos;
+        }
+    }
+
+    public static Vector2 GetCheckPoint()
+    {
+        return checkPointPos;
+    }
+
+    IEnumerator ClimbCountDown()
+    {
+        corotineFlag = true;
+        while(climbCountDown > 0)
+        {
+            climbCountDown--;
             yield return new WaitForSeconds(1f);
         }
-        if(currentTime == 0)
+        if(climbCountDown == 0)
         {
-            isHurt = false;
-            currentTime = hurtCDTime;
-            yield break;
+            isOnClimb = false;
+            corotineFlag = false;
+            isAbleClimb = false;
+            yield return 0;
         }
     }
 }

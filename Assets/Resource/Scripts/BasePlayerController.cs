@@ -35,11 +35,15 @@ public class BasePlayerController : MonoBehaviour
     public LayerMask groundLayer;
 
     /// </summary> 
+    public float rayHight;  // 角色头部射线高度
+    public float rayFoot;    // 角色脚底射线高度
     // -----Status-----
     private static Animator m_playerAnimator;                                 // 动画状态机
     private static CharacterController m_playerController;                 // 角色控制器
     private SpriteRenderer m_playerRender;                          // 精灵渲染器
     private static PlayerStatus m_playerStatus;
+    private static AudioClip[] audios;
+    private static AudioSource m_playerAudio;
     private bool isGround;                                          // 是否在地上
     private bool isMoveableLeft;                                    // 是否可以左移动
     private bool isMoveableRight;                                   // 是否可以右移动
@@ -48,36 +52,44 @@ public class BasePlayerController : MonoBehaviour
     private float m_horizontalInput;                                // 水平输入
     private float m_verticalInput;                                  // 垂直输入
     private bool m_jumpInput;                                       // 跳跃输入
+    private bool m_climbInput;                                      // 是否按下攀爬
     private int jumpCount;                                          // 跳跃次数
     private float dashDir;                                          // 控制冲刺方向的变量
     private float currentDashTime;                                  // 冲刺使用的时间
+    private bool isTouchingL = false, isTouchingR = false;                          // 是否碰到左右两边墙壁
+    private bool isTouchingHead = false;
     void Start()
     {
         m_playerController = GetComponent<CharacterController>();
         m_playerAnimator = GetComponentInChildren<Animator>();
         m_playerRender = GetComponentInChildren<SpriteRenderer>();
         m_playerStatus = GetComponent<PlayerStatus>();
+        audios = GetComponent<SoundSource>().audioClips;
+        m_playerAudio = GetComponent<AudioSource>();
     }
 
     void Update()
     {
         GroundCheck();
-        if(!PlayerStatus.isOnLadder || !isDashing)
+        if(!PlayerStatus.isOnClimb || !isDashing)
         {
             Gravity();
         }
         GetInput();
-        Jump();
+        Jump(false);
         ScanDashDir();
+        ScanClimb();
         if(!PlayerStatus.isHurt)
         {
-            if(!PlayerStatus.isOnLadder)
+            // Debug.Log(m_climbInput.ToString() + ',' + PlayerStatus.isOnClimb + ',' + PlayerStatus.corotineFlag);
+            if(!PlayerStatus.isOnClimb)
             {
                 Move(m_horizontalInput);
             }else{
                 Climb();
             }
         }
+        AnimationUpdate();
     }
 
     void Gravity()          // 重力计算
@@ -121,30 +133,20 @@ public class BasePlayerController : MonoBehaviour
         }
         if(isDashing)
         {
-            Debug.Log("OK");
             Dash();
             return;
         }
         /// </summary>
         m_playerController.Move(m_moveDirction);            // 让角色移动
         /// <summary>
-        /// 设置移动时的动画
-        if(Mathf.Abs(m_playerController.velocity.x) >= 0.05f)
-        {
-            m_playerAnimator.SetBool("isMove", true);
-        }else{
-            m_playerAnimator.SetBool("isMove", false);
-        }
-        /// </summary>
-        /// <summary>
         /// 精灵渲染器水平翻转
         if(m_playerController.velocity.x > 0.2f){
-            m_playerRender.flipX = false;
+            m_playerRender.flipX = true;
         }
         else{
             if(m_playerController.velocity.x < -0.2f)
             {
-                m_playerRender.flipX = true;
+                m_playerRender.flipX = false;
             }
         }
         /// </summary>
@@ -165,24 +167,34 @@ public class BasePlayerController : MonoBehaviour
             }
         }
         m_jumpInput = Input.GetButtonDown("Jump");
+        m_climbInput = Input.GetButton("Climb");
     }
 
     /// <summary>
     /// 跳跃函数
     /// </summary>
-    void Jump()
+    void Jump(bool isWallJump)
     {
-        if(m_jumpInput && isGround)
+        if(!isWallJump)
         {
-            if(jumpCount == 0)          // 改这个条件可以实现多段跳
+            if(m_jumpInput && isGround)
             {
-                // 跳跃的公式
-                m_moveDirction.y = playerJumpSpeed;
-                m_playerAnimator.SetTrigger("jumpTrigger");
-                jumpCount++;
+                if(jumpCount == 0)          // 改这个条件可以实现多段跳
+                {
+                    // 跳跃的公式
+                    m_moveDirction.y = playerJumpSpeed;
+                    m_playerAnimator.SetTrigger("jumpTrigger");
+                    m_playerAudio.clip = audios[1];
+                    m_playerAudio.Play();
+                    jumpCount++;
+                }
             }
+        }else{
+            m_moveDirction.y = playerJumpSpeed;
+            m_playerAnimator.SetTrigger("jumpTrigger");
         }
     }
+
     /// <summary>
     /// 冲刺函数
     /// </summary>
@@ -190,6 +202,11 @@ public class BasePlayerController : MonoBehaviour
     {
         if (currentDashTime <= 0)
         {
+            if(currentDashTime == dashTime)
+            {
+                m_playerAudio.clip = audios[0];
+                m_playerAudio.Play();
+            }
             isDashing = false;
             currentDashTime = 0;
             m_playerAnimator.SetBool("isDashing", false);
@@ -204,7 +221,29 @@ public class BasePlayerController : MonoBehaviour
     /// </summary>
     void Climb()
     {
-        m_playerController.Move(new Vector3(m_horizontalInput * playerSpeed * Time.deltaTime, m_verticalInput * playerClimbSpeed * Time.deltaTime, 0f));
+        m_moveDirction.y = 0f;
+        if(!isGround)
+        {
+            m_playerController.Move(new Vector3(0f,m_verticalInput * playerClimbSpeed * Time.deltaTime, 0f));
+        }else{
+            if(m_verticalInput <= 0)
+            {
+                m_playerController.Move(new Vector3(0f,0f,0f));
+            }
+        }
+        if(isTouchingHead)
+        {
+            if(m_verticalInput >= 0)
+            {
+                m_playerController.Move(new Vector3(0f,0f,0f));
+            }
+        }
+        if(m_jumpInput)
+        {
+            PlayerStatus.isOnClimb = false;
+            Jump(true);
+        }
+        
     }
 
     /// <summary>
@@ -213,21 +252,23 @@ public class BasePlayerController : MonoBehaviour
     void GroundCheck()
     {
         // -----上下碰撞检测-----
-        RaycastHit2D leftFootCheck = Raycast(new Vector2(-footOffset, 0f), Vector2.down, groundDistance, groundLayer);
-        RaycastHit2D righFootCheck = Raycast(new Vector2(footOffset, 0f), Vector2.down, groundDistance, groundLayer);
-        RaycastHit2D leftHeadCheck = Raycast(new Vector2(-footOffset, 1.3f), Vector2.up, groundDistance, groundLayer);
-        RaycastHit2D rightHeadCheck = Raycast(new Vector2(footOffset, 1.3f), Vector2.up, groundDistance, groundLayer);
+        RaycastHit2D leftFootCheck = Raycast(new Vector2(-footOffset, rayFoot), Vector2.down, groundDistance, groundLayer);
+        RaycastHit2D righFootCheck = Raycast(new Vector2(footOffset, rayFoot), Vector2.down, groundDistance, groundLayer);
+        RaycastHit2D leftHeadCheck = Raycast(new Vector2(-footOffset, rayHight), Vector2.up, groundDistance, groundLayer);
+        RaycastHit2D rightHeadCheck = Raycast(new Vector2(footOffset, rayHight), Vector2.up, groundDistance, groundLayer);
         // -----左右碰撞检测-----
-        RaycastHit2D leftUpCheck = Raycast(new Vector2(-footOffset, 1.3f), Vector2.left, groundDistance, groundLayer);
-        RaycastHit2D leftMidCheck = Raycast(new Vector2(-footOffset, 0.65f), Vector2.left, groundDistance, groundLayer);
-        RaycastHit2D leftDownCheck = Raycast(new Vector2(-footOffset, 0f), Vector2.left, groundDistance, groundLayer);
-        RaycastHit2D rightUpCheck = Raycast(new Vector2(footOffset, 1.3f), Vector2.right, groundDistance, groundLayer);
-        RaycastHit2D rightMidCheck = Raycast(new Vector2(footOffset, 0.65f), Vector2.right, groundDistance, groundLayer);
-        RaycastHit2D rightDownCheck = Raycast(new Vector2(footOffset, 0f), Vector2.right, groundDistance, groundLayer);
+        RaycastHit2D leftUpCheck = Raycast(new Vector2(-footOffset, rayHight), Vector2.left, groundDistance, groundLayer);
+        RaycastHit2D leftMidCheck = Raycast(new Vector2(-footOffset, 0f), Vector2.left, groundDistance, groundLayer);
+        RaycastHit2D leftDownCheck = Raycast(new Vector2(-footOffset, rayFoot), Vector2.left, groundDistance, groundLayer);
+        RaycastHit2D rightUpCheck = Raycast(new Vector2(footOffset, rayHight), Vector2.right, groundDistance, groundLayer);
+        RaycastHit2D rightMidCheck = Raycast(new Vector2(footOffset, 0f), Vector2.right, groundDistance, groundLayer);
+        RaycastHit2D rightDownCheck = Raycast(new Vector2(footOffset, rayFoot), Vector2.right, groundDistance, groundLayer);
         if (leftFootCheck || righFootCheck)
         {
             isGround = true;
+            m_playerAnimator.SetTrigger("landTrigger");
             jumpCount = 0;
+            PlayerStatus.isAbleClimb = true;
         }
         else
         {
@@ -236,6 +277,9 @@ public class BasePlayerController : MonoBehaviour
         if(leftHeadCheck || rightHeadCheck)
         {
             m_moveDirction.y = 0;
+            isTouchingHead = true;
+        }else{
+            isTouchingHead = false;
         }
         // -----左右墙壁碰撞处理-----
         if(leftUpCheck || leftMidCheck || leftDownCheck)
@@ -244,8 +288,10 @@ public class BasePlayerController : MonoBehaviour
             m_moveDirction.x = 0;
             dashDir = 0f;
             currentDashTime = 0f;
+            isTouchingL = true;
         }else{
             isMoveableLeft = true;
+            isTouchingL = false;
         }
         if(rightUpCheck || rightMidCheck || rightDownCheck)
         {
@@ -253,8 +299,10 @@ public class BasePlayerController : MonoBehaviour
             m_moveDirction.x = 0;
             dashDir = 0f;
             currentDashTime = 0f;
+            isTouchingR = true;
         }else{
             isMoveableRight = true;
+            isTouchingR = false;
         }
     }
     /// <summary>
@@ -276,15 +324,40 @@ public class BasePlayerController : MonoBehaviour
     /// <summary>
     /// 玩家死亡静态方法
     /// </summary>
-    public static void Hurt(float hurtDir, int damage)      // hurtDir是玩家受伤飞出去的方向
+    void ScanClimb()
     {
-        if(PlayerStatus.healthValue > damage)
+        if(isTouchingL || isTouchingR)
         {
-            PlayerStatus.healthValue -= damage;
-            m_playerAnimator.SetTrigger("hurtTrigger");
-            PlayerStatus.isHurt = true;
-            m_playerController.Move(new Vector3(hurtDir * 1f, 0.5f, 0f));
-            m_playerStatus.HurtCooldown();
+            if(m_climbInput)
+            {
+                if(PlayerStatus.isAbleClimb)
+                {
+                    PlayerStatus.isOnClimb = true;
+                }
+            }else{
+                PlayerStatus.isOnClimb = false;
+            }
+        }else{
+            PlayerStatus.isOnClimb = false;
         }
+    }
+
+    void AnimationUpdate()
+    {
+        if(isGround)
+        {
+            if(Mathf.Abs(m_playerController.velocity.x) >= 0.05f)
+            {
+                m_playerAnimator.SetBool("isMove", true);
+            }else{
+                m_playerAnimator.SetBool("isMove", false);
+            }
+        }
+    }
+
+    public static void Hurt()      // hurtDir是玩家受伤飞出去的方向
+    {
+        m_playerAudio.clip = audios[3];
+        m_playerAudio.Play();
     }
 }
